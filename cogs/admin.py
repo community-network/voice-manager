@@ -81,7 +81,7 @@ class Admin(commands.Cog):
             description = ""
             channel_ids = await get_voice_channels(session, interaction.guild_id)
             for channel_id in channel_ids:
-                description += f"{channel_id}\n"
+                description += f"<#{channel_id}>\n"
 
             if len(channel_ids) <= 0:
                 await interaction.followup.send(
