@@ -63,11 +63,11 @@ async def get_channels_in_db(
 async def on_voice_channel_join(
     session: AsyncSession, member: discord.Member, after: discord.VoiceState
 ):
-    db_channel = await get_voice_channel(session, member.guild.id, after.channel.id)
-    if db_channel is None:
+    if after.channel is None:
         return
 
-    if after.channel is None or after.channel.category is None:
+    db_channel = await get_voice_channel(session, member.guild.id, after.channel.id)
+    if db_channel is None or after.channel.category is None:
         return
 
     category = after.channel.category
@@ -85,7 +85,6 @@ async def on_voice_channel_join(
             channel.name, position=after.channel.position
         )
         await new_channel.edit(overwrites=after.channel.overwrites)
-
         await add_voice_channel(session, member.guild.id, new_channel.id)
 
 
@@ -106,8 +105,8 @@ async def on_voice_channel_leave(
     for channel in reversed(channels_in_db):
         total_users = len(channel.members)
         if empty_channels > 0 and total_users <= 0:
-            await remove_voice_channel(session, member.guild.id, channel.id)
             await channel.delete()
+            await remove_voice_channel(session, member.guild.id, channel.id)
         elif len(channel.members) <= 0:
             empty_channels += 1
 

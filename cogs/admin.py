@@ -59,7 +59,7 @@ class Admin(commands.Cog):
             existing_channel = await get_voice_channel(
                 session, interaction.guild_id, channel_id=channel.id
             )
-            if existing_channel is None:
+            if existing_channel is not None:
                 await interaction.followup.send(
                     "Channel is already added", ephemeral=True
                 )
