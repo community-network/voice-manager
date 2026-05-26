@@ -31,14 +31,14 @@ class Admin(commands.Cog):
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> list[app_commands.Choice[int]]:
+    ) -> list[app_commands.Choice[str]]:
         """Autocomplete channel names"""
         async with self.bot.db.create_session() as session:
             if interaction.guild is None:
                 return []
             voice_channel_ids = await get_voice_channels(session, interaction.guild.id)
             return [
-                app_commands.Choice(name=channel.name, value=channel.id)
+                app_commands.Choice(name=channel.name, value=str(channel.id))
                 for channel in interaction.guild.voice_channels
                 if channel.id in voice_channel_ids
                 and channel.name.lower().startswith(current.lower())
@@ -100,7 +100,7 @@ class Admin(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def remove_tracked_channel(
-        self, interaction: discord.Interaction, channel: int
+        self, interaction: discord.Interaction, channel: str
     ) -> None:
         """Remove a tracked channel"""
         await interaction.response.defer()
@@ -108,10 +108,10 @@ class Admin(commands.Cog):
             return  # is already set to guild_only
         async with self.bot.db.create_session() as session:
             existing_channel = await get_voice_channel(
-                session, interaction.guild_id, channel_id=channel
+                session, interaction.guild_id, channel_id=int(channel)
             )
             if existing_channel is not None:
-                await remove_voice_channel(session, interaction.guild_id, channel)
+                await remove_voice_channel(session, interaction.guild_id, int(channel))
 
                 await interaction.followup.send(
                     "Removed the tracking of voice channel", ephemeral=True
