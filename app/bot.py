@@ -11,7 +11,10 @@ from discord.ext import commands
 from app.config import load_config
 from app.database.voice_channels_database import VoiceChannelsDatabase
 from app.logger import setup_logger
-from app.services.voice_channels import update_voice_channels
+from app.services.voice_channels import (
+    ensure_channel_deleted_from_database,
+    update_voice_channels,
+)
 
 env_config = load_config()
 
@@ -49,6 +52,8 @@ def create_bot() -> VoiceBot:
     bot = VoiceBot(command_prefix="!", intents=intents)
     register_bot_events(bot)
     return bot
+
+
 def register_bot_events(bot: VoiceBot) -> None:
     @bot.event
     async def on_voice_state_update(
@@ -61,18 +66,24 @@ def register_bot_events(bot: VoiceBot) -> None:
             if member.guild.id is None:
                 return
             if before.channel is None and after.channel is not None:  # join
-                await update_voice_channels(session, member, after.channel)
+                await update_voice_channels(session, after.channel)
 
             if before.channel is not None and after.channel is None:  # leave
-                await update_voice_channels(session, member, before.channel)
+                await update_voice_channels(session, before.channel)
 
             if (
                 before.channel is not None
                 and after.channel is not None
                 and before.channel.id != after.channel.id
             ):
-                await update_voice_channels(session, member, before.channel)
-                await update_voice_channels(session, member, after.channel)
+                await update_voice_channels(session, before.channel)
+                await update_voice_channels(session, after.channel)
+
+    @bot.event
+    async def on_guild_channel_delete(channel: discord.abc.GuildChannel) -> None:
+        if isinstance(channel, discord.VoiceChannel):
+            async with bot.db.create_session() as session:
+                await ensure_channel_deleted_from_database(session, channel)
 
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:

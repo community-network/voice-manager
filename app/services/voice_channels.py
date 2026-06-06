@@ -1,7 +1,7 @@
 import asyncio
 
 import discord
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,27 @@ async def get_voice_channel_ids(session: AsyncSession, server_id: int) -> set[in
     return {channel.id for channel in voice_channels}
 
 
+async def get_parent_voice_channel_ids(
+    session: AsyncSession, server_id: int
+) -> set[int]:
+    voice_channels = await get_voice_channels(session, server_id)
+    return {
+        channel.id
+        for channel in voice_channels
+        if channel.parent_channel_id is None
+    }
+
+
 async def get_voice_channels(session: AsyncSession, server_id: int) -> list[VoiceChannel]:
     stmt = select(VoiceChannel).filter(VoiceChannel.server_id == server_id)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_voice_channels_by_parent(
+    session: AsyncSession, parent_channel_id: int
+) -> list[VoiceChannel]:
+    stmt = select(VoiceChannel).filter(VoiceChannel.parent_channel_id == parent_channel_id)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -36,9 +55,16 @@ async def get_voice_channel(
 
 
 async def add_voice_channel(
-    session: AsyncSession, server_id: int, channel_id: int, main: bool = False
+    session: AsyncSession,
+    server_id: int,
+    channel_id: int,
+    parent_channel_id: int | None = None,
 ) -> None:
-    channel = dict(server_id=server_id, id=channel_id, main=main)
+    channel = dict(
+        server_id=server_id,
+        id=channel_id,
+        parent_channel_id=parent_channel_id,
+    )
     stmt = insert(VoiceChannel).values(channel).on_conflict_do_nothing(
         index_elements=[VoiceChannel.id]
     )
@@ -48,64 +74,112 @@ async def add_voice_channel(
 
 async def remove_voice_channel(
     session: AsyncSession, server_id: int, channel_id: int
-) -> None:
+) -> VoiceChannel | None:
     voice_channel = await get_voice_channel(session, server_id, channel_id)
     if voice_channel is None:
-        return
-    await session.delete(voice_channel)
+        return None
+
+    if voice_channel.parent_channel_id is None:
+        stmt = (
+            delete(VoiceChannel)
+            .filter(VoiceChannel.server_id == server_id)
+            .filter(
+                (VoiceChannel.id == channel_id)
+                | (VoiceChannel.parent_channel_id == channel_id)
+            )
+        )
+        await session.execute(stmt)
+    else:
+        await session.delete(voice_channel)
     await session.commit()
+    return voice_channel
 
 
-async def update_voice_channels(
-    session: AsyncSession,
-    member: discord.Member,
-    channel: discord.abc.GuildChannel,
-) -> None:
+async def update_voice_channels(session: AsyncSession, channel: discord.abc.GuildChannel) -> None:
     if not isinstance(channel, discord.VoiceChannel):
         return
 
     async with voice_channel_update_lock:
-        db_voice_channels = await get_voice_channels(session, member.guild.id)
-        db_voice_channel_by_id = {voice_channel.id: voice_channel for voice_channel in db_voice_channels}
+        # Get the database entry for the handled channel
+        db_voice_channel = await get_voice_channel(session, channel.guild.id, channel.id)
 
         # Skip if changed channel is not managed.
-        if channel.id not in db_voice_channel_by_id or channel.category is None:
+        if db_voice_channel is None:
             return
 
-        # Get empty channels of discord server
-        empty_channels = [vc for vc in channel.guild.voice_channels if vc.id in db_voice_channel_by_id and not vc.members]
+        # Get the parent discord channel
+        parent_channel = channel.guild.get_channel(db_voice_channel.parent_channel_id or db_voice_channel.id)
+        if not isinstance(parent_channel, discord.VoiceChannel):
+            return
 
-        # Create empty channel if not empty channels exist
-        if not empty_channels:
-            # Create voice channel on discord server
-            new_channel = await channel.category.create_voice_channel(
-                channel.name,
-                position=channel.position,
-                overwrites=_get_child_channel_overwrites(channel),
+        # Get managed channels by parent
+        managed_db_voice_channels_by_parent = await get_voice_channels_by_parent(session, parent_channel.id)
+        managed_channels = get_managed_dicord_voice_channels(parent_channel, managed_db_voice_channels_by_parent)
+
+        # Get empty channels
+        empty_channels = [vc for vc in [parent_channel, *managed_channels] if not vc.members]
+
+        if any(empty_channels):
+            # Delete empty managed channels except the first
+            for empty_channel in empty_channels[1:]:
+                # Database deletion is handled by discord event on_guild_channel_delete
+                await empty_channel.delete()
+            # TODO: Move last empty channel to the top
+        else:
+            # Create empty channel in discord
+            new_channel = await parent_channel.guild.create_voice_channel(
+                parent_channel.name,
+                category=parent_channel.category,
+                overwrites=_channel_permission_overwrites(parent_channel),
             )
-            # Add channel to the database
-            await add_voice_channel(session, member.guild.id, new_channel.id)
+            # Create channel in database
+            await add_voice_channel(
+                session,
+                parent_channel.guild.id,
+                new_channel.id,
+                parent_channel_id=parent_channel.id,
+            )
+
+
+async def ensure_channel_deleted_from_database(session: AsyncSession, channel: discord.VoiceChannel) -> None:
+    async with voice_channel_update_lock:
+        db_voice_channel = await get_voice_channel(session, channel.guild.id, channel.id)
+        if db_voice_channel is None:
             return
 
-        empty_main_channel_exists = any(db_voice_channel_by_id[empty_channel.id].main for empty_channel in empty_channels)
-        empty_extra_channels = [empty_channel for empty_channel in empty_channels if not db_voice_channel_by_id[empty_channel.id].main]
+        # Delete child channels from database
+        if db_voice_channel.parent_channel_id is None:
+            await get_voice_channels_by_parent(session, db_voice_channel.id)
 
-        # Keep the main channel, and keep one generated empty channel if needed.
-        channels_to_delete = empty_extra_channels if empty_main_channel_exists else empty_extra_channels[:-1]
-        for extra_channel in channels_to_delete:
-            # Delete voice channel from discord server
-            await extra_channel.delete()
-            # Delete channel from database
-            await remove_voice_channel(session, member.guild.id, extra_channel.id)
+        # Delete parent channel from database
+        await remove_voice_channel(session, channel.guild.id, channel.id)
 
 
-def _get_child_channel_overwrites(
+def get_managed_dicord_voice_channels(
+    parent_channel: discord.VoiceChannel, db_voice_channels: list[VoiceChannel]
+) -> list[discord.VoiceChannel]:
+    return sorted(
+        [
+            voice_channel
+            for db_voice_channel in db_voice_channels
+            if isinstance(
+                voice_channel := parent_channel.guild.get_channel(db_voice_channel.id),
+                discord.VoiceChannel,
+            )
+        ],
+        key=lambda voice_channel: voice_channel.position,
+    )
+
+
+def _channel_permission_overwrites(
     channel: discord.VoiceChannel
 ) -> dict[discord.Role | discord.Member | discord.Object, discord.PermissionOverwrite]:
-    # Copy permissions from the main channel
+    # Copy permissions from the parent channel
     overwrites = dict(channel.overwrites)
 
-    # Make sure the bot doesnt loose access to the channel
-    overwrites[channel.guild.me] = discord.PermissionOverwrite(view_channel=True, connect=True, manage_channels=True)
+    # Make sure the bot doesn't lose access to the channel
+    overwrites[channel.guild.me] = discord.PermissionOverwrite(
+        view_channel=True, connect=True, manage_channels=True
+    )
 
     return overwrites

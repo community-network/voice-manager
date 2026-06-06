@@ -1,7 +1,7 @@
 # Voice manager
-This simple bot will automatically make new channels, based on the channel it is keeping track of. 
+This simple bot will automatically make child channels, based on the parent channel it is keeping track of. 
 It will always leave 1 empty channel, for players to join. 
-To setup the bot "/admin add voice-channel" to add a voice channel to the tracked voice channel list.
+To setup the bot, use "/admin voice-channels add" to add a parent channel.
 
 There is also a public instance of this bot available with the following invite url:
 https://discord.com/oauth2/authorize?client_id=1508897603302064289&permissions=277293950992&scope=bot%20applications.commands

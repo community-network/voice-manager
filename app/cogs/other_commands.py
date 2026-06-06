@@ -20,9 +20,9 @@ class OtherCommands(commands.Cog):
         embed = discord.Embed(
             color=0xFFA500,
             title="Help for the Channel Manager bot",
-            description="This bot will automatically make new channels, based on the channel it is keeping track of. "
+            description="This bot will automatically make child channels, based on the parent channel it is keeping track of. "
             "It will always leave 1 empty channel, for players to join. "
-            'To setup the bot "/admin add voice-channel" to add a voice channel to the tracked voice channel list. ',
+            'To setup the bot, use "/admin voice-channels add" to add a parent channel. ',
         )
         await interaction.followup.send(embed=embed)
 
