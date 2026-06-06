@@ -9,7 +9,7 @@ from app.bot import VoiceBot
 from app.services.voice_channels import (
     add_voice_channel,
     get_voice_channel,
-    get_voice_channels,
+    get_voice_channel_ids,
     remove_voice_channel,
 )
 
@@ -36,7 +36,7 @@ class Admin(commands.Cog):
         async with self.bot.db.create_session() as session:
             if interaction.guild is None:
                 return []
-            voice_channel_ids = await get_voice_channels(session, interaction.guild.id)
+            voice_channel_ids = await get_voice_channel_ids(session, interaction.guild.id)
             return [
                 app_commands.Choice(name=channel.name, value=str(channel.id))
                 for channel in interaction.guild.voice_channels
@@ -65,7 +65,7 @@ class Admin(commands.Cog):
                 )
                 return
 
-            await add_voice_channel(session, interaction.guild_id, channel.id)
+            await add_voice_channel(session, interaction.guild_id, channel.id, main=True)
             await interaction.followup.send("Added the voice channel", ephemeral=True)
 
     @voice_group.command(name="list", description="Add a tracked channel")
@@ -79,7 +79,7 @@ class Admin(commands.Cog):
             return  # is already set to guild_only
         async with self.bot.db.create_session() as session:
             description = ""
-            channel_ids = await get_voice_channels(session, interaction.guild_id)
+            channel_ids = await get_voice_channel_ids(session, interaction.guild_id)
             for channel_id in channel_ids:
                 description += f"<#{channel_id}>\n"
 

@@ -7,17 +7,11 @@ import os
 
 import discord
 from discord.ext import commands
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import load_config
 from app.database.voice_channels_database import VoiceChannelsDatabase
 from app.logger import setup_logger
-from app.services.voice_channels import (
-    add_voice_channel,
-    get_voice_channel,
-    get_voice_channels,
-    remove_voice_channel,
-)
+from app.services.voice_channels import update_voice_channels
 
 env_config = load_config()
 
@@ -55,66 +49,6 @@ def create_bot() -> VoiceBot:
     bot = VoiceBot(command_prefix="!", intents=intents)
     register_bot_events(bot)
     return bot
-
-
-async def get_channels_in_db(
-    session: AsyncSession,
-    member: discord.Member,
-    voice_channels: list[discord.VoiceChannel],
-):
-    db_voice_channels = await get_voice_channels(session, member.guild.id)
-    return [channel for channel in voice_channels if channel.id in db_voice_channels]
-
-
-async def on_voice_channel_join(
-    session: AsyncSession,
-    member: discord.Member,
-    channel: discord.abc.GuildChannel,
-):
-    db_channel = await get_voice_channel(session, member.guild.id, channel.id)
-    if db_channel is None or channel.category is None:
-        return
-
-    category = channel.category
-    channels_in_db = await get_channels_in_db(
-        session, member, channel.guild.voice_channels
-    )
-
-    total_empty_channels = 0
-    for channel in channels_in_db:
-        if len(channel.members) == 0:
-            total_empty_channels += 1
-
-    if total_empty_channels == 0:
-        new_channel = await category.create_voice_channel(
-            channel.name, position=channel.position
-        )
-        await new_channel.edit(overwrites=channel.overwrites)
-        await add_voice_channel(session, member.guild.id, new_channel.id)
-
-
-async def on_voice_channel_leave(
-    session: AsyncSession,
-    member: discord.Member,
-    channel: discord.abc.GuildChannel,
-):
-    db_channel = await get_voice_channel(session, member.guild.id, channel.id)
-    if db_channel is None:
-        return
-
-    channels_in_db = await get_channels_in_db(
-        session, member, channel.guild.voice_channels
-    )
-    empty_channels = 0
-    for channel in reversed(channels_in_db):
-        total_users = len(channel.members)
-        if empty_channels > 0 and total_users <= 0:
-            await channel.delete()
-            await remove_voice_channel(session, member.guild.id, channel.id)
-        elif len(channel.members) <= 0:
-            empty_channels += 1
-
-
 def register_bot_events(bot: VoiceBot) -> None:
     @bot.event
     async def on_voice_state_update(
@@ -122,22 +56,23 @@ def register_bot_events(bot: VoiceBot) -> None:
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
+        """Handle event when a member joins or leaves a channel"""
         async with bot.db.create_session() as session:
             if member.guild.id is None:
                 return
             if before.channel is None and after.channel is not None:  # join
-                await on_voice_channel_join(session, member, after.channel)
+                await update_voice_channels(session, member, after.channel)
 
             if before.channel is not None and after.channel is None:  # leave
-                await on_voice_channel_leave(session, member, before.channel)
+                await update_voice_channels(session, member, before.channel)
 
             if (
                 before.channel is not None
                 and after.channel is not None
                 and before.channel.id != after.channel.id
             ):
-                await on_voice_channel_leave(session, member, before.channel)
-                await on_voice_channel_join(session, member, after.channel)
+                await update_voice_channels(session, member, before.channel)
+                await update_voice_channels(session, member, after.channel)
 
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:
@@ -145,7 +80,7 @@ def register_bot_events(bot: VoiceBot) -> None:
 
     @bot.event
     async def on_command_error(ctx, error) -> None:
-        """Ignore expected command errors and report permission issues."""
+        """Ignore expected command errors and report permission issues"""
         if isinstance(error, commands.CommandNotFound):
             return
         if isinstance(error, commands.MissingRequiredArgument):

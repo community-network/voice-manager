@@ -15,6 +15,7 @@ async def run_bot(bot: VoiceBot) -> None:
 
 def main() -> None:
     bot = create_bot()
+    bot.db.run_startup_migrations()
     try:
         asyncio.run(run_bot(bot))
     except Exception:
