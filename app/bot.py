@@ -67,18 +67,17 @@ async def get_channels_in_db(
 
 
 async def on_voice_channel_join(
-    session: AsyncSession, member: discord.Member, after: discord.VoiceState
+    session: AsyncSession,
+    member: discord.Member,
+    channel: discord.abc.GuildChannel,
 ):
-    if after.channel is None:
+    db_channel = await get_voice_channel(session, member.guild.id, channel.id)
+    if db_channel is None or channel.category is None:
         return
 
-    db_channel = await get_voice_channel(session, member.guild.id, after.channel.id)
-    if db_channel is None or after.channel.category is None:
-        return
-
-    category = after.channel.category
+    category = channel.category
     channels_in_db = await get_channels_in_db(
-        session, member, after.channel.guild.voice_channels
+        session, member, channel.guild.voice_channels
     )
 
     total_empty_channels = 0
@@ -88,24 +87,23 @@ async def on_voice_channel_join(
 
     if total_empty_channels == 0:
         new_channel = await category.create_voice_channel(
-            after.channel.name, position=after.channel.position
+            channel.name, position=channel.position
         )
-        await new_channel.edit(overwrites=after.channel.overwrites)
+        await new_channel.edit(overwrites=channel.overwrites)
         await add_voice_channel(session, member.guild.id, new_channel.id)
 
 
 async def on_voice_channel_leave(
-    session: AsyncSession, member: discord.Member, before: discord.VoiceState
+    session: AsyncSession,
+    member: discord.Member,
+    channel: discord.abc.GuildChannel,
 ):
-    if before.channel is None:
-        return
-
-    db_channel = await get_voice_channel(session, member.guild.id, before.channel.id)
+    db_channel = await get_voice_channel(session, member.guild.id, channel.id)
     if db_channel is None:
         return
 
     channels_in_db = await get_channels_in_db(
-        session, member, before.channel.guild.voice_channels
+        session, member, channel.guild.voice_channels
     )
     empty_channels = 0
     for channel in reversed(channels_in_db):
@@ -128,18 +126,18 @@ def register_bot_events(bot: VoiceBot) -> None:
             if member.guild.id is None:
                 return
             if before.channel is None and after.channel is not None:  # join
-                await on_voice_channel_join(session, member, after)
+                await on_voice_channel_join(session, member, after.channel)
 
             if before.channel is not None and after.channel is None:  # leave
-                await on_voice_channel_leave(session, member, before)
+                await on_voice_channel_leave(session, member, before.channel)
 
             if (
                 before.channel is not None
                 and after.channel is not None
                 and before.channel.id != after.channel.id
             ):
-                await on_voice_channel_leave(session, member, before)
-                await on_voice_channel_join(session, member, after)
+                await on_voice_channel_leave(session, member, before.channel)
+                await on_voice_channel_join(session, member, after.channel)
 
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:
