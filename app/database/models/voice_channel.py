@@ -1,6 +1,6 @@
 from sqlalchemy import BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
-from database.connection import Base
+from app.database.models.base import Base
 
 
 class VoiceChannel(Base):

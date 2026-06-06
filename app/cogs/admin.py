@@ -5,8 +5,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from bot import VoiceBot
-from utils.voice_channels import (
+from app.bot import VoiceBot
+from app.services.voice_channels import (
     add_voice_channel,
     get_voice_channel,
     get_voice_channels,

@@ -1,17 +1,11 @@
 from sqlalchemy import URL
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from config import Db
-from utils.meta_singleton import MetaSingleton
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.ext.asyncio import AsyncAttrs
+from app.config import DbConfig
+from app.database.models.base import Base
 
 
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
-
-
-class DatabaseSingleton(metaclass=MetaSingleton):
-    def __init__(self, config: Db):
+class VoiceChannelsDatabase:
+    def __init__(self, config: DbConfig):
         uri = URL.create(
             drivername="postgresql+asyncpg",
             username=config.postgres_user,
@@ -22,16 +16,13 @@ class DatabaseSingleton(metaclass=MetaSingleton):
         )
         self.dburl = uri.render_as_string(hide_password=False)
         self.engine = None
-        self.base = Base
-        self.session = None
 
-    async def init_db(self):
+    async def init_db(self) -> None:
         self.engine = create_async_engine(self.dburl)
         async with self.engine.begin() as conn:
-            await conn.run_sync(self.base.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all)
 
-    async def close_async(self):
-        # Use on shutdown
+    async def close_async(self) -> None:
         if self.engine is not None:
             await self.engine.dispose()
 

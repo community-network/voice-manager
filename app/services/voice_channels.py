@@ -1,8 +1,8 @@
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
-from database.dto.voice_channels import VoiceChannel
+from app.database.models.voice_channel import VoiceChannel
 
 
 async def get_voice_channels(session: AsyncSession, server_id: int) -> list[int]:
