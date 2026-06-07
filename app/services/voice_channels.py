@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import discord
 from sqlalchemy import delete, select
@@ -9,6 +10,7 @@ from app.database.models.voice_channel import VoiceChannel
 
 
 voice_channel_update_lock = asyncio.Lock()
+logger = logging.getLogger(__name__)
 
 
 async def get_voice_channel_ids(session: AsyncSession, server_id: int) -> set[int]:
@@ -124,12 +126,13 @@ async def update_voice_channels(session: AsyncSession, channel: discord.abc.Guil
             for empty_channel in empty_channels[1:]:
                 # Database deletion is handled by discord event on_guild_channel_delete
                 await empty_channel.delete()
-            # TODO: Move last empty channel to the top
+            await move_voice_channel_to_group_top(managed_channels, empty_channels[0])
         else:
             # Create empty channel in discord
             new_channel = await parent_channel.guild.create_voice_channel(
                 parent_channel.name,
                 category=parent_channel.category,
+                position=parent_channel.position,
                 overwrites=_channel_permission_overwrites(parent_channel),
             )
             # Create channel in database
@@ -139,6 +142,7 @@ async def update_voice_channels(session: AsyncSession, channel: discord.abc.Guil
                 new_channel.id,
                 parent_channel_id=parent_channel.id,
             )
+            await move_voice_channel_to_group_top([parent_channel, *managed_channels], new_channel)
 
 
 async def ensure_channel_deleted_from_database(session: AsyncSession, channel: discord.VoiceChannel) -> None:
@@ -169,6 +173,28 @@ def get_managed_dicord_voice_channels(
         ],
         key=lambda voice_channel: voice_channel.position,
     )
+
+
+async def move_voice_channel_to_group_top(group: list[discord.VoiceChannel], channel: discord.VoiceChannel) -> None:
+    if channel.guild.get_channel(channel.id) is None:
+        return
+
+    existing_managed_channels = sorted(
+        [
+            managed_channel
+            for managed_channel in group
+            if channel.guild.get_channel(managed_channel.id) is not None
+        ],
+        key=lambda managed_channel: managed_channel.position,
+    )
+    if not existing_managed_channels:
+        return
+
+    top_channel = existing_managed_channels[0]
+    try:
+        await channel.move(before=top_channel)
+    except:
+        logger.exception("Failed to move voice channel %s before %s", channel.id, top_channel.id)
 
 
 def _channel_permission_overwrites(
