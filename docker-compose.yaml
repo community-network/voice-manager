@@ -5,7 +5,7 @@ services:
     volumes:
       - postgress_db:/var/lib/postgresql/data
     environment:
-      - POSTGRES_NAME=${DB_NAME}
+      - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USERNAME}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     # ports:
@@ -14,7 +14,7 @@ services:
     #     protocol: tcp
     #     mode: host
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: "10s"
       timeout: "5s"
       retries: 5
@@ -25,7 +25,8 @@ services:
     image: ghcr.io/community-network/voice-manager/voice-bot:latest
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - POSTGRES_USER=${DB_USERNAME}

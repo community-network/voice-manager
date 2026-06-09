@@ -115,4 +115,6 @@ def register_bot_events(bot: VoiceBot) -> None:
 
     @bot.event
     async def on_ready() -> None:
-        await bot.tree.sync()
+        logger.info("Connected to Discord as %s", bot.user)
+        synced_commands = await bot.tree.sync()
+        logger.info("Synced %s application commands", len(synced_commands))

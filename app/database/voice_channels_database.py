@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import closing
 from pathlib import Path
 
 import psycopg2
@@ -12,13 +13,15 @@ from sqlalchemy import URL
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.config import DbConfig
 
-logger = logging.getLogger("migrations")
+logger = logging.getLogger("bot.migrations")
 
 
 class VoiceChannelsDatabase:
     _MIGRATION_LOCK_KEY = 914382605
     _CONNECT_RETRIES = 30
     _CONNECT_RETRY_DELAY_SECONDS = 2
+    _MIGRATION_LOCK_RETRIES = 30
+    _MIGRATION_LOCK_RETRY_DELAY_SECONDS = 2
 
     def __init__(self, config: DbConfig):
         self.config = config
@@ -34,19 +37,37 @@ class VoiceChannelsDatabase:
         self.engine = None
 
     def run_startup_migrations(self) -> None:
-        with self._connect_with_retry() as connection:
+        with closing(self._connect_with_retry()) as connection:
             with connection.cursor() as cursor:
                 logger.info("Waiting for migration lock")
-                cursor.execute("SELECT pg_advisory_lock(%s)", (self._MIGRATION_LOCK_KEY,))
+                self._acquire_migration_lock(cursor)
 
             try:
                 logger.info("Applying database migrations")
                 command.upgrade(self._build_alembic_config(), "head")
+                logger.info("Database migrations are up to date")
             finally:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT pg_advisory_unlock(%s)", (self._MIGRATION_LOCK_KEY,)
                     )
+
+    def _acquire_migration_lock(self, cursor) -> None:
+        for attempt in range(1, self._MIGRATION_LOCK_RETRIES + 1):
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (self._MIGRATION_LOCK_KEY,))
+            locked = cursor.fetchone()[0]
+            if locked:
+                return
+
+            if attempt == self._MIGRATION_LOCK_RETRIES:
+                raise TimeoutError("Timed out waiting for the database migration lock")
+
+            logger.info(
+                "Migration lock is held by another process (%s/%s)",
+                attempt,
+                self._MIGRATION_LOCK_RETRIES,
+            )
+            time.sleep(self._MIGRATION_LOCK_RETRY_DELAY_SECONDS)
 
     async def init_db(self) -> None:
         self.engine = create_async_engine(self.dburl)
