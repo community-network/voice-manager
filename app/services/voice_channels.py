@@ -121,12 +121,24 @@ async def update_voice_channels(session: AsyncSession, channel: discord.abc.Guil
         # Get empty channels
         empty_channels = [vc for vc in [parent_channel, *managed_channels] if not vc.members]
 
-        if any(empty_channels):
+        if empty_channels:
             # Delete empty managed channels except the first
-            for empty_channel in empty_channels[1:]:
+            empty_channels_to_delete = empty_channels[1:]
+            deleted_empty_channel_ids = {
+                empty_channel.id for empty_channel in empty_channels_to_delete
+            }
+            for empty_channel in empty_channels_to_delete:
                 # Database deletion is handled by discord event on_guild_channel_delete
                 await empty_channel.delete()
-            await move_voice_channel_to_group_top(managed_channels, empty_channels[0])
+
+            remaining_managed_channels = [
+                managed_channel
+                for managed_channel in managed_channels
+                if managed_channel.id not in deleted_empty_channel_ids
+            ]
+            await move_voice_channel_to_group_top(
+                remaining_managed_channels, empty_channels[0]
+            )
         else:
             # Create empty channel in discord
             new_channel = await parent_channel.guild.create_voice_channel(
@@ -171,30 +183,47 @@ def get_managed_discord_voice_channels(
                 discord.VoiceChannel,
             )
         ],
-        key=lambda voice_channel: voice_channel.position,
+        key=_voice_channel_sort_key,
     )
 
 
 async def move_voice_channel_to_group_top(group: list[discord.VoiceChannel], channel: discord.VoiceChannel) -> None:
-    if channel.guild.get_channel(channel.id) is None:
+    current_channel = channel.guild.get_channel(channel.id)
+    if not isinstance(current_channel, discord.VoiceChannel):
         return
 
-    existing_managed_channels = sorted(
-        [
-            managed_channel
-            for managed_channel in group
-            if channel.guild.get_channel(managed_channel.id) is not None
-        ],
-        key=lambda managed_channel: managed_channel.position,
+    existing_managed_channels: dict[int, discord.VoiceChannel] = {}
+    for managed_channel in group:
+        existing_channel = current_channel.guild.get_channel(managed_channel.id)
+        if (
+            isinstance(existing_channel, discord.VoiceChannel)
+            and existing_channel.category_id == current_channel.category_id
+        ):
+            existing_managed_channels[existing_channel.id] = existing_channel
+
+    existing_managed_channels[current_channel.id] = current_channel
+    ordered_managed_channels = sorted(
+        existing_managed_channels.values(), key=_voice_channel_sort_key
     )
-    if not existing_managed_channels:
+    if len(ordered_managed_channels) <= 1:
         return
 
-    top_channel = existing_managed_channels[0]
+    top_channel = ordered_managed_channels[0]
+    if top_channel.id == current_channel.id:
+        return
+
     try:
-        await channel.move(before=top_channel)
-    except discord.HTTPException:
-        logger.exception("Failed to move voice channel %s before %s", channel.id, top_channel.id)
+        await current_channel.move(before=top_channel)
+    except (discord.HTTPException, ValueError):
+        logger.exception(
+            "Failed to move voice channel %s before %s",
+            current_channel.id,
+            top_channel.id,
+        )
+
+
+def _voice_channel_sort_key(channel: discord.VoiceChannel) -> tuple[int, int]:
+    return (channel.position, channel.id)
 
 
 def _channel_permission_overwrites(
