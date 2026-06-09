@@ -193,7 +193,7 @@ async def move_voice_channel_to_group_top(group: list[discord.VoiceChannel], cha
     top_channel = existing_managed_channels[0]
     try:
         await channel.move(before=top_channel)
-    except:
+    except discord.HTTPException:
         logger.exception("Failed to move voice channel %s before %s", channel.id, top_channel.id)
 
 
