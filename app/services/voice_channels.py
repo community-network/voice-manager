@@ -159,7 +159,7 @@ async def ensure_channel_deleted_from_database(session: AsyncSession, channel: d
         await remove_voice_channel(session, channel.guild.id, channel.id)
 
 
-def get_managed_dicord_voice_channels(
+def get_managed_discord_voice_channels(
     parent_channel: discord.VoiceChannel, db_voice_channels: list[VoiceChannel]
 ) -> list[discord.VoiceChannel]:
     return sorted(
