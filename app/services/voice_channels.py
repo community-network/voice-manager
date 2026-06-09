@@ -204,8 +204,9 @@ def _channel_permission_overwrites(
     overwrites = dict(channel.overwrites)
 
     # Make sure the bot doesn't lose access to the channel
-    overwrites[channel.guild.me] = discord.PermissionOverwrite(
-        view_channel=True, connect=True, manage_channels=True
-    )
+    if channel.guild.me is not None:
+        overwrites[channel.guild.me] = discord.PermissionOverwrite(
+            view_channel=True, connect=True, manage_channels=True
+        )
 
     return overwrites

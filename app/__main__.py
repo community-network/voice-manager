@@ -9,8 +9,11 @@ logger = logging.getLogger("bot")
 
 
 async def run_bot(bot: VoiceBot) -> None:
-    async with bot:
-        await bot.start(bot.config.bot.discord_bot_token)
+    try:
+        async with bot:
+            await bot.start(bot.config.bot.discord_bot_token)
+    finally:
+        await bot.db.close_async()
 
 
 def main() -> None:
@@ -21,8 +24,6 @@ def main() -> None:
     except Exception:
         logger.exception("Application startup failed")
         raise
-    finally:
-        asyncio.run(bot.db.close_async())
 
 
 if __name__ == "__main__":
