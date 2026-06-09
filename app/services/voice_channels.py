@@ -116,7 +116,7 @@ async def update_voice_channels(session: AsyncSession, channel: discord.abc.Guil
 
         # Get managed channels by parent
         managed_db_voice_channels_by_parent = await get_voice_channels_by_parent(session, parent_channel.id)
-        managed_channels = get_managed_dicord_voice_channels(parent_channel, managed_db_voice_channels_by_parent)
+        managed_channels = get_managed_discord_voice_channels(parent_channel, managed_db_voice_channels_by_parent)
 
         # Get empty channels
         empty_channels = [vc for vc in [parent_channel, *managed_channels] if not vc.members]
