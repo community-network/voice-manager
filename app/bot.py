@@ -100,7 +100,7 @@ def register_bot_events(bot: VoiceBot) -> None:
             return
         if isinstance(error, commands.MissingPermissions):
             embed = discord.Embed(
-                color=0xE74C3C, description="Your not allowed to use this command"
+                color=0xE74C3C, description="You're not allowed to use this command"
             )
             await ctx.send(embed=embed)
             return
