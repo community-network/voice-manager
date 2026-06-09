@@ -3,9 +3,10 @@ from logging.handlers import RotatingFileHandler
 import sys
 
 
-def setup_logger(logger: logging.Logger):
+def setup_logger(logger: logging.Logger) -> None:
     logger.handlers.clear()
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
     console_log_handler = logging.StreamHandler(sys.stdout)
     console_log_handler.setLevel(logging.INFO)

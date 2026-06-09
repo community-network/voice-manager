@@ -5,11 +5,12 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from bot import VoiceBot
-from utils.voice_channels import (
+from app.bot import VoiceBot
+from app.services.voice_channels import (
     add_voice_channel,
+    get_parent_voice_channel_ids,
+    get_voice_channel_ids,
     get_voice_channel,
-    get_voice_channels,
     remove_voice_channel,
 )
 
@@ -24,10 +25,10 @@ class Admin(commands.Cog):
     )
 
     voice_group = app_commands.Group(
-        name="voice-channels", description="Manage voice channels", parent=group
+        name="voice-channels", description="Manage parent voice channels", parent=group
     )
 
-    async def channel_name_autocomplete(
+    async def channel_name_autocomplete_parents(
         self,
         interaction: discord.Interaction,
         current: str,
@@ -36,28 +37,63 @@ class Admin(commands.Cog):
         async with self.bot.db.create_session() as session:
             if interaction.guild is None:
                 return []
-            voice_channel_ids = await get_voice_channels(session, interaction.guild.id)
+            voice_channel_ids = await get_parent_voice_channel_ids(
+                session, interaction.guild.id
+            )
             return [
                 app_commands.Choice(name=channel.name, value=str(channel.id))
                 for channel in interaction.guild.voice_channels
                 if channel.id in voice_channel_ids
                 and channel.name.lower().startswith(current.lower())
-            ]
+            ][:25]
+
+    async def channel_name_autocomplete_unmanaged(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        """Autocomplete unmanaged channel names"""
+        async with self.bot.db.create_session() as session:
+            if interaction.guild is None:
+                return []
+            voice_channel_ids = await get_voice_channel_ids(
+                session, interaction.guild.id
+            )
+            return [
+                app_commands.Choice(name=channel.name, value=str(channel.id))
+                for channel in interaction.guild.voice_channels
+                if channel.id not in voice_channel_ids
+                and channel.name.lower().startswith(current.lower())
+            ][:25]
 
     @voice_group.command(name="add", description="Add a tracked channel")
     @app_commands.guild_only()
+    @app_commands.autocomplete(channel=channel_name_autocomplete_unmanaged)
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def add_tracked_channel(
-        self, interaction: discord.Interaction, channel: discord.VoiceChannel
+        self, interaction: discord.Interaction, channel: str
     ) -> None:
         """Add a tracked channel"""
         await interaction.response.defer()
         if interaction.guild_id is None:
             return  # is already set to guild_only
+        try:
+            channel_id = int(channel)
+        except ValueError:
+            await interaction.followup.send("Voice channel wasn't found", ephemeral=True)
+            return
+
+        if interaction.guild is None:
+            return  # is already set to guild_only
+        voice_channel = interaction.guild.get_channel(channel_id)
+        if not isinstance(voice_channel, discord.VoiceChannel):
+            await interaction.followup.send("Voice channel wasn't found", ephemeral=True)
+            return
+
         async with self.bot.db.create_session() as session:
             existing_channel = await get_voice_channel(
-                session, interaction.guild_id, channel_id=channel.id
+                session, interaction.guild_id, channel_id=channel_id
             )
             if existing_channel is not None:
                 await interaction.followup.send(
@@ -65,44 +101,46 @@ class Admin(commands.Cog):
                 )
                 return
 
-            await add_voice_channel(session, interaction.guild_id, channel.id)
+            await add_voice_channel(session, interaction.guild_id, channel_id)
             await interaction.followup.send("Added the voice channel", ephemeral=True)
 
-    @voice_group.command(name="list", description="Add a tracked channel")
+    @voice_group.command(name="list", description="List parent channels")
     @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def list_tracked_channels(self, interaction: discord.Interaction) -> None:
-        """List a tracked channel"""
+        """List parent channels"""
         await interaction.response.defer()
         if interaction.guild_id is None:
             return  # is already set to guild_only
         async with self.bot.db.create_session() as session:
             description = ""
-            channel_ids = await get_voice_channels(session, interaction.guild_id)
+            channel_ids = await get_parent_voice_channel_ids(
+                session, interaction.guild_id
+            )
             for channel_id in channel_ids:
                 description += f"<#{channel_id}>\n"
 
             if len(channel_ids) <= 0:
                 await interaction.followup.send(
-                    "No voice channels are tracked", ephemeral=True
+                    "No parent channels are tracked", ephemeral=True
                 )
                 return
 
             embed = discord.Embed(
-                title="Current tracked voice channels:", description=description
+                title="Current parent channels:", description=description
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @voice_group.command(name="remove", description="Remove a tracked channel")
+    @voice_group.command(name="remove", description="Remove a parent channel")
     @app_commands.guild_only()
-    @app_commands.autocomplete(channel=channel_name_autocomplete)
+    @app_commands.autocomplete(channel=channel_name_autocomplete_parents)
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def remove_tracked_channel(
         self, interaction: discord.Interaction, channel: str
     ) -> None:
-        """Remove a tracked channel"""
+        """Remove a parent channel"""
         await interaction.response.defer()
         if interaction.guild_id is None:
             return  # is already set to guild_only
@@ -114,12 +152,12 @@ class Admin(commands.Cog):
                 await remove_voice_channel(session, interaction.guild_id, int(channel))
 
                 await interaction.followup.send(
-                    "Removed the tracking of voice channel", ephemeral=True
+                    "Removed the parent channel", ephemeral=True
                 )
                 return
 
             await interaction.followup.send(
-                "Voice channel wasn't tracked", ephemeral=True
+                "Parent channel wasn't tracked", ephemeral=True
             )
 
 

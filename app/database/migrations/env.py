@@ -6,9 +6,9 @@ from sqlalchemy import pool
 from alembic import context
 
 # add db items to autogenerate the migrations
-from config import load_config
-from database import connection
-from database.dto import voice_channels  # noqa: F401
+from app.config import load_config
+from app.database.models.base import Base
+from app.database.models import voice_channel  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -35,7 +35,7 @@ config.set_main_option("sqlalchemy.url", url)
 # add your model's MetaData object here
 # for 'autogenerate' support
 
-target_metadata = connection.Base.metadata
+target_metadata = Base.metadata
 # target_metadata = None
 
 # other values from the config, defined by the needs of env.py,

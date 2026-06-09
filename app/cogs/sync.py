@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from bot import VoiceBot
+from app.bot import VoiceBot
 
 
 class Sync(commands.Cog):
