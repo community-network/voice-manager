@@ -180,7 +180,7 @@ class Admin(commands.Cog):
         embed = discord.Embed(
             title="Manage squad voice channel",
             description="""
-            The first person that joins a squad cusernamehannel, owns the channel until its empty again.
+            The first person that joins a voice channel, owns the channel until its empty again.
             The owner of the channel can manage it with the buttons below.""",
         )
         await interaction.response.send_message(
