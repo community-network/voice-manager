@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def channel_permision_check(
     session: AsyncSession,
     interaction: discord.Interaction,
+    needs_manage_permissions: bool = False,
 ):
     if isinstance(interaction.user, User) or interaction.guild_id is None:
         await interaction.response.send_message(
@@ -40,6 +41,12 @@ async def channel_permision_check(
     if db_voice_channel.owner_id != interaction.user.id:
         await interaction.response.send_message(
             "You are not the owner of this voice channel", ephemeral=True
+        )
+        return False
+
+    if needs_manage_permissions and not db_voice_channel.manage_permissions:
+        await interaction.response.send_message(
+            "You cannot edit the permissions of this type of channel", ephemeral=True
         )
         return False
 
@@ -111,7 +118,9 @@ class VoiceRoleLockView(discord.ui.View):
         self, interaction: discord.Interaction, select: discord.ui.RoleSelect
     ):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 channel = interaction.user.voice.channel
                 guild = interaction.guild
 
@@ -149,7 +158,9 @@ class VoiceUserLockView(discord.ui.View):
         self, interaction: discord.Interaction, select: discord.ui.UserSelect
     ):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 channel = interaction.user.voice.channel
                 guild = interaction.guild
 
@@ -275,7 +286,9 @@ class VoiceManagementView(discord.ui.View):
     )
     async def voice_unlock_callback(self, interaction: discord.Interaction, button):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 await interaction.user.voice.channel.edit(user_limit=0)
                 channel = interaction.user.voice.channel
                 await channel.edit(overwrites={})
@@ -306,7 +319,9 @@ class VoiceManagementView(discord.ui.View):
     )
     async def role_lock_callback(self, interaction: discord.Interaction, button):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 return await interaction.response.send_message(
                     "Which roles do you want to allow?",
                     ephemeral=True,
@@ -323,7 +338,9 @@ class VoiceManagementView(discord.ui.View):
         self, interaction: discord.Interaction, button
     ):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 channel = interaction.user.voice.channel
                 guild = interaction.guild
 
@@ -354,7 +371,9 @@ class VoiceManagementView(discord.ui.View):
         self, interaction: discord.Interaction, button
     ):
         async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
+            if await channel_permision_check(
+                session, interaction, needs_manage_permissions=True
+            ):
                 return await interaction.response.send_message(
                     "Which users do you want to allow?",
                     ephemeral=True,

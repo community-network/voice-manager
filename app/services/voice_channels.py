@@ -69,11 +69,13 @@ async def add_voice_channel(
     server_id: int,
     channel_id: int,
     parent_channel_id: int | None = None,
+    manage_permissions: bool = True,
 ) -> None:
     channel = dict(
         server_id=server_id,
         id=channel_id,
         parent_channel_id=parent_channel_id,
+        manage_permissions=manage_permissions,
     )
     stmt = (
         insert(VoiceChannel)
@@ -175,6 +177,7 @@ async def update_voice_channels(
                 parent_channel.guild.id,
                 new_channel.id,
                 parent_channel_id=parent_channel.id,
+                manage_permissions=db_voice_channel.manage_permissions,
             )
             await move_voice_channel_to_group_top(
                 [parent_channel, *managed_channels], new_channel

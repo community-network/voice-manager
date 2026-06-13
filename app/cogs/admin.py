@@ -1,6 +1,7 @@
 """User management"""
 
 import logging
+from typing import Optional
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -68,12 +69,19 @@ class Admin(commands.Cog):
             ][:25]
 
     @voice_group.command(name="add", description="Add a tracked channel")
+    @app_commands.describe(
+        channel="Select a channel to add",
+        manage_permissions="If the permissions of the channel should be editable",
+    )
     @app_commands.guild_only()
     @app_commands.autocomplete(channel=channel_name_autocomplete_unmanaged)
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
     async def add_tracked_channel(
-        self, interaction: discord.Interaction, channel: str
+        self,
+        interaction: discord.Interaction,
+        channel: str,
+        manage_permissions: Optional[bool] = True,
     ) -> None:
         """Add a tracked channel"""
         await interaction.response.defer()
@@ -106,7 +114,14 @@ class Admin(commands.Cog):
                 )
                 return
 
-            await add_voice_channel(session, interaction.guild_id, channel_id)
+            await add_voice_channel(
+                session,
+                interaction.guild_id,
+                channel_id,
+                manage_permissions=manage_permissions
+                if manage_permissions is not None
+                else True,
+            )
             await interaction.followup.send("Added the voice channel", ephemeral=True)
 
     @voice_group.command(name="list", description="List parent channels")
