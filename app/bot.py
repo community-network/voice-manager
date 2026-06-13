@@ -13,6 +13,7 @@ from app.database.voice_channels_database import VoiceChannelsDatabase
 from app.logger import setup_logger
 from app.services.voice_channels import (
     ensure_channel_deleted_from_database,
+    update_voice_channel,
     update_voice_channels,
 )
 
@@ -78,6 +79,12 @@ def register_bot_events(bot: VoiceBot) -> None:
             ):
                 await update_voice_channels(session, before.channel)
                 await update_voice_channels(session, after.channel)
+
+            # make the first join the owner of the voice channel
+            if after.channel is not None and len(after.channel.members) == 1:
+                await update_voice_channel(
+                    session, after.channel.id, {"owner_id": member.id}
+                )
 
     @bot.event
     async def on_guild_channel_delete(channel: discord.abc.GuildChannel) -> None:

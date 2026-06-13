@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database.models.base import Base
@@ -10,3 +12,4 @@ class VoiceChannel(Base):
     parent_channel_id: Mapped[int | None] = mapped_column(
         BigInteger, nullable=True, index=True
     )
+    owner_id: Mapped[Optional[int]] = mapped_column(BigInteger, index=True)

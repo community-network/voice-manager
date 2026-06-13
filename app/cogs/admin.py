@@ -6,6 +6,7 @@ from discord.ext import commands
 from discord import app_commands
 
 from app.bot import VoiceBot
+from app.cogs.channel_management import VoiceManagementView
 from app.services.voice_channels import (
     add_voice_channel,
     get_parent_voice_channel_ids,
@@ -81,14 +82,18 @@ class Admin(commands.Cog):
         try:
             channel_id = int(channel)
         except ValueError:
-            await interaction.followup.send("Voice channel wasn't found", ephemeral=True)
+            await interaction.followup.send(
+                "Voice channel wasn't found", ephemeral=True
+            )
             return
 
         if interaction.guild is None:
             return  # is already set to guild_only
         voice_channel = interaction.guild.get_channel(channel_id)
         if not isinstance(voice_channel, discord.VoiceChannel):
-            await interaction.followup.send("Voice channel wasn't found", ephemeral=True)
+            await interaction.followup.send(
+                "Voice channel wasn't found", ephemeral=True
+            )
             return
 
         async with self.bot.db.create_session() as session:
@@ -159,6 +164,59 @@ class Admin(commands.Cog):
             await interaction.followup.send(
                 "Parent channel wasn't tracked", ephemeral=True
             )
+
+    generate_group = app_commands.Group(
+        name="generate", description="Generate a message", parent=group
+    )
+
+    @generate_group.command(
+        name="voice-management", description="Generate the voice-management buttons"
+    )
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def generate_voice_management(self, interaction: discord.Interaction) -> None:
+        """Generate the register button"""
+        embed = discord.Embed(
+            title="Manage squad voice channel",
+            description="""
+            The first person that joins a squad cusernamehannel, owns the channel until its empty again.
+            The owner of the channel can manage it with the buttons below.""",
+        )
+        await interaction.response.send_message(
+            embed=embed, view=VoiceManagementView(self.bot)
+        )
+
+    # set_group = app_commands.Group(
+    #     name="set", description="Set a setting", parent=group
+    # )
+
+    # @set_group.command(
+    #     name="user-limit",
+    #     description="Set default user limit for the generated channels (0 for unlimited)",
+    # )
+    # @app_commands.guild_only()
+    # @app_commands.default_permissions(administrator=True)
+    # @app_commands.checks.has_permissions(administrator=True)
+    # async def set_default_user_limit(
+    #     self,
+    #     interaction: discord.Interaction,
+    #     default_user_limit: app_commands.Range[int, 0, 6],
+    # ) -> None:
+    #     if default_user_limit == 0:
+    #         default_user_limit = None
+    #     """Set default user limit for the generated channels"""
+    #     await interaction.response.defer()
+    #     if interaction.guild is None:
+    #         return  # is already set to guild_only
+    #     async with self.bot.db.create_session() as session:
+    #         await update_guild(
+    #             session, interaction.guild, {"default_user_limit": default_user_limit}
+    #         )
+    #     await interaction.followup.send(
+    #         f'Set the default user limit to "{"unlimited" if default_user_limit is None else default_user_limit}"',
+    #         ephemeral=True,
+    #     )
 
 
 async def setup(bot: VoiceBot) -> None:

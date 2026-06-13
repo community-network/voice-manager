@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 import discord
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,13 +23,13 @@ async def get_parent_voice_channel_ids(
 ) -> set[int]:
     voice_channels = await get_voice_channels(session, server_id)
     return {
-        channel.id
-        for channel in voice_channels
-        if channel.parent_channel_id is None
+        channel.id for channel in voice_channels if channel.parent_channel_id is None
     }
 
 
-async def get_voice_channels(session: AsyncSession, server_id: int) -> list[VoiceChannel]:
+async def get_voice_channels(
+    session: AsyncSession, server_id: int
+) -> list[VoiceChannel]:
     stmt = select(VoiceChannel).filter(VoiceChannel.server_id == server_id)
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -38,7 +38,9 @@ async def get_voice_channels(session: AsyncSession, server_id: int) -> list[Voic
 async def get_voice_channels_by_parent(
     session: AsyncSession, parent_channel_id: int
 ) -> list[VoiceChannel]:
-    stmt = select(VoiceChannel).filter(VoiceChannel.parent_channel_id == parent_channel_id)
+    stmt = select(VoiceChannel).filter(
+        VoiceChannel.parent_channel_id == parent_channel_id
+    )
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -56,6 +58,12 @@ async def get_voice_channel(
     return result.scalar_one_or_none()
 
 
+async def update_voice_channel(session: AsyncSession, channel_id: int, changes: dict):
+    stmt = update(VoiceChannel).where(VoiceChannel.id == channel_id).values(changes)
+    await session.execute(stmt)
+    await session.commit()
+
+
 async def add_voice_channel(
     session: AsyncSession,
     server_id: int,
@@ -67,8 +75,10 @@ async def add_voice_channel(
         id=channel_id,
         parent_channel_id=parent_channel_id,
     )
-    stmt = insert(VoiceChannel).values(channel).on_conflict_do_nothing(
-        index_elements=[VoiceChannel.id]
+    stmt = (
+        insert(VoiceChannel)
+        .values(channel)
+        .on_conflict_do_nothing(index_elements=[VoiceChannel.id])
     )
     await session.execute(stmt)
     await session.commit()
@@ -97,29 +107,41 @@ async def remove_voice_channel(
     return voice_channel
 
 
-async def update_voice_channels(session: AsyncSession, channel: discord.abc.GuildChannel) -> None:
+async def update_voice_channels(
+    session: AsyncSession, channel: discord.abc.GuildChannel
+) -> None:
     if not isinstance(channel, discord.VoiceChannel):
         return
 
     async with voice_channel_update_lock:
         # Get the database entry for the handled channel
-        db_voice_channel = await get_voice_channel(session, channel.guild.id, channel.id)
+        db_voice_channel = await get_voice_channel(
+            session, channel.guild.id, channel.id
+        )
 
         # Skip if changed channel is not managed.
         if db_voice_channel is None:
             return
 
         # Get the parent discord channel
-        parent_channel = channel.guild.get_channel(db_voice_channel.parent_channel_id or db_voice_channel.id)
+        parent_channel = channel.guild.get_channel(
+            db_voice_channel.parent_channel_id or db_voice_channel.id
+        )
         if not isinstance(parent_channel, discord.VoiceChannel):
             return
 
         # Get managed channels by parent
-        managed_db_voice_channels_by_parent = await get_voice_channels_by_parent(session, parent_channel.id)
-        managed_channels = get_managed_discord_voice_channels(parent_channel, managed_db_voice_channels_by_parent)
+        managed_db_voice_channels_by_parent = await get_voice_channels_by_parent(
+            session, parent_channel.id
+        )
+        managed_channels = get_managed_discord_voice_channels(
+            parent_channel, managed_db_voice_channels_by_parent
+        )
 
         # Get empty channels
-        empty_channels = [vc for vc in [parent_channel, *managed_channels] if not vc.members]
+        empty_channels = [
+            vc for vc in [parent_channel, *managed_channels] if not vc.members
+        ]
 
         if empty_channels:
             # Delete empty managed channels except the first
@@ -154,12 +176,18 @@ async def update_voice_channels(session: AsyncSession, channel: discord.abc.Guil
                 new_channel.id,
                 parent_channel_id=parent_channel.id,
             )
-            await move_voice_channel_to_group_top([parent_channel, *managed_channels], new_channel)
+            await move_voice_channel_to_group_top(
+                [parent_channel, *managed_channels], new_channel
+            )
 
 
-async def ensure_channel_deleted_from_database(session: AsyncSession, channel: discord.VoiceChannel) -> None:
+async def ensure_channel_deleted_from_database(
+    session: AsyncSession, channel: discord.VoiceChannel
+) -> None:
     async with voice_channel_update_lock:
-        db_voice_channel = await get_voice_channel(session, channel.guild.id, channel.id)
+        db_voice_channel = await get_voice_channel(
+            session, channel.guild.id, channel.id
+        )
         if db_voice_channel is None:
             return
 
@@ -187,7 +215,9 @@ def get_managed_discord_voice_channels(
     )
 
 
-async def move_voice_channel_to_group_top(group: list[discord.VoiceChannel], channel: discord.VoiceChannel) -> None:
+async def move_voice_channel_to_group_top(
+    group: list[discord.VoiceChannel], channel: discord.VoiceChannel
+) -> None:
     current_channel = channel.guild.get_channel(channel.id)
     if not isinstance(current_channel, discord.VoiceChannel):
         return
@@ -227,7 +257,7 @@ def _voice_channel_sort_key(channel: discord.VoiceChannel) -> tuple[int, int]:
 
 
 def _channel_permission_overwrites(
-    channel: discord.VoiceChannel
+    channel: discord.VoiceChannel,
 ) -> dict[discord.Role | discord.Member | discord.Object, discord.PermissionOverwrite]:
     # Copy permissions from the parent channel
     overwrites = dict(channel.overwrites)
