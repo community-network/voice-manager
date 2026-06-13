@@ -241,16 +241,16 @@ class VoiceManagementView(discord.ui.View):
         self.bot = bot
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="📝 rename",
-        custom_id="voice_rename",
-        style=discord.ButtonStyle.success,
-        row=0,
-    )
-    async def rename_callback(self, interaction: discord.Interaction, button):
-        async with self.bot.db.create_session() as session:
-            if await channel_permision_check(session, interaction):
-                await interaction.response.send_modal(RenameModal(self.bot))
+    # @discord.ui.button(
+    #     label="📝 rename",
+    #     custom_id="voice_rename",
+    #     style=discord.ButtonStyle.success,
+    #     row=0,
+    # )
+    # async def rename_callback(self, interaction: discord.Interaction, button):
+    #     async with self.bot.db.create_session() as session:
+    #         if await channel_permision_check(session, interaction):
+    #             await interaction.response.send_modal(RenameModal(self.bot))
 
     @discord.ui.button(
         label="📍 Set limit",
